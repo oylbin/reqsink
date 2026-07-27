@@ -9,7 +9,7 @@
 # compiles SQLite from C source and is painfully slow under emulation.
 
 # Keep in sync with the toolchain pinned in .github/workflows/ci.yml.
-ARG RUST_VERSION=1.73
+ARG RUST_VERSION=1.90
 ARG DEBIAN_RELEASE=bookworm
 
 # ---------------------------------------------------------------------------

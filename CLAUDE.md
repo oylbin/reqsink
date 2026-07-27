@@ -28,7 +28,7 @@ cargo run -- --ignore-rules ./examples/ignore-rules.json          # appended to 
 cargo run -- --ignore-rules ./examples/ignore-rules.json --no-default-ignore
 ```
 
-CI (`.github/workflows/ci.yml`) pins **Rust 1.73** and runs `cargo build`, `cargo clippy -- -D warnings`, and `cargo test`. Match that toolchain when reproducing CI locally.
+CI (`.github/workflows/ci.yml`) pins **Rust 1.90** (also mirrored in `create_release.yml`, the `RUST_VERSION` arg in `Dockerfile`, and `rust-version` in `Cargo.toml` — keep all four in sync) and runs `cargo build`, `cargo clippy -- -D warnings`, and `cargo test`. Match that toolchain when reproducing CI locally.
 
 ## Architecture
 

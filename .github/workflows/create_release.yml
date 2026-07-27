@@ -57,7 +57,7 @@ jobs:
         uses: dtolnay/rust-toolchain@v1
         with:
           # Keep in sync with ci.yml and the Dockerfile.
-          toolchain: 1.73
+          toolchain: 1.90
 
       - name: Build release binary
         run: cargo build --release --locked

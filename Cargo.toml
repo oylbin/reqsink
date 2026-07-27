@@ -4,6 +4,11 @@ version = "1.0.1"
 description = "A lightweight but flexible sink for requests"
 edition = "2018"
 license = "MIT"
+# Kept in sync with the toolchain pinned in .github/workflows/ci.yml,
+# create_release.yml and the Dockerfile. Raised from 1.73 because the
+# locked deps (ignore 0.4.31, icu_* 2.x, tera 1.20) require it, and
+# Cargo.lock is now lockfile v4 (needs Cargo >= 1.78).
+rust-version = "1.90"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

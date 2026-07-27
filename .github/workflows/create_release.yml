@@ -1,40 +1,96 @@
-name: Build release
+name: Release
 
-# TODO: Add targets for arm and container image build
+# Tag-driven, so that a single `git tag v0.4.2 && git push --tags` produces both
+# the GitHub Release binaries (here) and the container images (docker.yml).
+#
+#   git tag -a v0.4.2 -m 'v0.4.2' && git push origin v0.4.2
+
 on:
-  workflow_dispatch:
-  # push:
-  #   branches:
-  #     - master
+  push:
+    tags:
+      - 'v*.*.*'
 
+permissions:
+  contents: write
 
 jobs:
-  release:
-    name: Build and Release
+  verify:
+    name: Verify tag matches Cargo.toml
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-      - name: Build project
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compare git tag against crate version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          # Read `version` from the [package] section only, so a dependency
+          # pinned with an inline version cannot be picked up by mistake.
+          crate=$(awk -F'"' '
+            /^\[/ { section = $0 }
+            section == "[package]" && /^version[[:space:]]*=/ { print $2; exit }
+          ' Cargo.toml)
+          echo "tag=$tag cargo=$crate"
+          if [ "$tag" != "$crate" ]; then
+            echo "::error::Tag v${tag} does not match Cargo.toml version ${crate}. Bump Cargo.toml (and Cargo.lock) before tagging."
+            exit 1
+          fi
+
+  build:
+    name: Build ${{ matrix.artifact }}
+    needs: verify
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - artifact: reqsink-linux-amd64
+            runner: ubuntu-latest
+          - artifact: reqsink-linux-arm64
+            runner: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          # Keep in sync with ci.yml and the Dockerfile.
+          toolchain: 1.73
+
+      - name: Build release binary
         run: cargo build --release --locked
-      - name: Bump version and push tag/create release point
-        uses: anothrNick/github-tag-action@1.17.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WITH_V: true
-          INITIAL_VERSION: 0.2.1
-        id: bump_version
-      - name: "Create GitHub Release"
-        uses: actions/create-release@v1 # https://github.com/actions/create-release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Strip and rename
+        run: |
+          strip target/release/reqsink
+          mv target/release/reqsink "${{ matrix.artifact }}"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{steps.bump_version.outputs.tag}}
-      - name: Upload binary to release
-        uses: svenstaro/upload-release-action@v1-release
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      # A single job owns the release, so the two build jobs cannot race each
+      # other trying to create it.
+      - name: Download binaries
+        uses: actions/download-artifact@v4
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: target/release/reqsink
-          asset_name: reqsink-linux-amd64
-          tag: ${{steps.bump_version.outputs.tag}}
-          overwrite: true
+          path: dist
+          merge-multiple: true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true

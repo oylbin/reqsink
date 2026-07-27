@@ -7,7 +7,7 @@ A lightweight HTTP request sink inspired by the original [requestbin](https://gi
 It's as simple as:
 
 ```bash
-$ docker run -p 8000:8000 atomic77/reqsink:latest
+$ docker run -p 8000:8000 ghcr.io/oylbin/reqsink:latest
 Total 1 templates loaded:
 "admin.html"
 Binding to interface "0.0.0.0:8000"
@@ -79,7 +79,42 @@ reqsink --ignore-rules ./examples/ignore-rules.json --no-default-ignore   # only
 including any user-defined template registered for that route. So you can keep a custom `GET /`
 response while keeping `GET /` out of the cache.
 
-If you don't want to use docker, a static binary is available for linux_amd64. Other platforms should work fine, so far I've tested armv7. 
+## Container images
+
+Multi-arch images (`linux/amd64` and `linux/arm64`) are published to the GitHub Container Registry
+at [`ghcr.io/oylbin/reqsink`](https://github.com/oylbin/reqsink/pkgs/container/reqsink):
+
+| Tag | Points at |
+| --- | --- |
+| `latest` | the newest release, or the tip of `master` if that is newer |
+| `0.4.2`, `0.4` | a specific release |
+| `master-<short-sha>` | an exact commit on `master` |
+
+The image uses an `ENTRYPOINT`, so flags go straight after the image name:
+
+```bash
+docker run -p 8000:8000 ghcr.io/oylbin/reqsink:latest --port 8000 --req-limit 500
+```
+
+It runs as a non-root user (UID 10001) and ships `/data` as a writable working directory, which is
+where SQLite archives and mounted templates belong:
+
+```bash
+docker run -p 8000:8000 \
+  -v "$PWD/data:/data" \
+  -v "$PWD/examples:/templates:ro" \
+  ghcr.io/oylbin/reqsink:latest \
+  --sqlite /data/reqsink.db \
+  --user-templates-dir /templates \
+  --extra-routes /templates/example-routes.json
+```
+
+If you bind-mount a host directory onto `/data`, make sure it is writable by UID 10001 (or pass
+`--user "$(id -u):$(id -g)"`), otherwise the SQLite archive cannot be created.
+
+If you don't want to use docker, prebuilt binaries for `linux-amd64` and `linux-arm64` are attached to
+every [release](https://github.com/oylbin/reqsink/releases). Other platforms should work fine, so far
+I've tested armv7.
 
 ## User-defined templates
 

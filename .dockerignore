@@ -1,0 +1,27 @@
+# Keep the build context small. Note that `templates/` and `static/` MUST stay in
+# the context: rust-embed compiles them into the binary, and excluding them would
+# silently produce a binary with no admin page and no assets.
+
+# Rust build artifacts -- several GB locally, and useless in the container anyway
+target/
+
+# VCS / CI / editor noise
+.git/
+.gitignore
+.github/
+.vscode/
+.idea/
+
+# Docker's own files
+Dockerfile
+.dockerignore
+
+# Docs and local examples -- not needed to build the binary
+*.md
+LICENSE
+examples/
+
+# Local runtime state
+*.db
+*.sqlite
+*.sqlite3

@@ -13,7 +13,10 @@ use rust_embed::RustEmbed;
 use log::{ info , warn , error };
 use env_logger::Env;
 
+mod ignore;
 mod serve;
+
+use crate::ignore::IgnoreRule;
 
 
 #[derive(RustEmbed)]
@@ -51,14 +54,25 @@ struct Opts {
     req_limit: usize,
     /// Filename of sqlite database to use for persistence (EXPERIMENTAL)
     #[clap(short, long)]
-    sqlite: Option<String>
-
+    sqlite: Option<String>,
+    /// A JSON file with extra rules describing requests that should not be recorded.
+    /// Rules are appended to the built-in defaults unless --no-default-ignore is given.
+    // Long-only: every sensible short flag is already taken by the options above.
+    #[clap(long)]
+    ignore_rules: Option<String>,
+    /// Do not apply the built-in ignore rules (GET /favicon.ico, GET /)
+    #[clap(long)]
+    no_default_ignore: bool
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 struct StoredRequest {
     // TODO can't get a DateTime to deserialize properly?
     time: String,
+    /// Milliseconds since the unix epoch, for the same instant as `time`. The admin
+    /// page uses this to re-render the timestamp in the viewer's local timezone;
+    /// `time` is kept as-is so user templates and no-JS clients still work.
+    time_epoch_ms: i64,
     method: String,
     path: String,
     params: Option<String>,
@@ -73,6 +87,7 @@ pub struct AppContext {
     tera: Tera,
     req_cache: Vec<StoredRequest>,
     user_templates: Option<HashMap<String, UserRoute>>,
+    ignore_rules: Vec<IgnoreRule>,
     opts: Opts
 }
 
@@ -119,10 +134,14 @@ fn main() {
     let admin_rawstr = std::str::from_utf8(admin_templ.as_ref());
     tera.add_raw_template("admin.html", admin_rawstr.unwrap()).unwrap();
 
+    // Resolve the ignore rules before `opts` is moved into the context
+    let ignore_rules = ignore::load_rules(opts.ignore_rules.as_ref(), !opts.no_default_ignore);
+
     let mut app_ctx = AppContext {
         tera,
         req_cache: Vec::with_capacity(opts.req_limit),
         user_templates: None,
+        ignore_rules,
         opts
     };
 
@@ -143,7 +162,11 @@ fn main() {
         let url = base_url.join(request.url()).unwrap();
 
         let resp = {
-            if url.path() == "/admin" {
+            // /admin/clear must be matched before the catch-all, otherwise the act of
+            // clearing the cache would itself be recorded as a request.
+            if url.path() == "/admin/clear" {
+                serve::handle_admin_clear(&request, &mut app_ctx)
+            } else if url.path() == "/admin" {
                 serve::handle_admin(&request, &mut app_ctx)
             } else if url.path().starts_with("/__static__") {
                 serve::handle_static(&mut request)

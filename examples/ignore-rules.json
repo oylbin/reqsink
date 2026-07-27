@@ -1,0 +1,6 @@
+[
+    { "method": "GET", "path": "/robots.txt" },
+    { "method": "POST", "path": "/api/heartbeat" },
+    { "path": "/health*" },
+    { "path": "*.css" }
+]

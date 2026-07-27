@@ -27,6 +27,58 @@ highlight.js:
 
 ![Admin page](static/admin.png)
 
+The admin page also lets you:
+
+* **Filter by path** — the search box does a case-insensitive substring match against the request
+  path across the *whole* cache, not just the visible page. It is driven by the `q` query parameter
+  (`/admin?q=/api/widgets`), so a filtered view can be bookmarked or shared, and paging through the
+  results keeps the filter applied.
+* **Clear everything** — the *Clear all requests* button empties the in-memory cache and, when
+  `--sqlite` is in use, also deletes the rows from the archive table. It posts to `/admin/clear`;
+  only `POST` is accepted, so a crawler or link prefetch cannot wipe the cache by accident.
+
+Timestamps are captured in UTC but rendered in **your browser's timezone**. The server emits both a
+UTC string and an epoch-milliseconds attribute, and a small script rewrites the displayed value on
+load — so a request logged at `Mon, 27 Jul 2026 07:02:56 +0000` shows as `2026/07/27 15:02:56
+(Asia/Shanghai)` for a UTC+8 viewer. With JavaScript disabled the original UTC string remains, and
+the UTC value is always available as the element's tooltip.
+
+## Ignoring requests
+
+Browsers send a fair amount of noise (`/favicon.ico`, a bare `GET /` when you open the sink in a
+tab) that would otherwise bury the requests you actually care about. These are ignored by default:
+
+| Method | Path |
+| --- | --- |
+| `GET` | `/favicon.ico` |
+| `GET` | `/` |
+
+Pass `--no-default-ignore` to turn the built-ins off, and `--ignore-rules <FILE>` to add your own.
+Rules from the file are *appended* to whatever defaults are in effect:
+
+```bash
+reqsink --ignore-rules ./examples/ignore-rules.json
+reqsink --ignore-rules ./examples/ignore-rules.json --no-default-ignore   # only my rules
+```
+
+```json
+[
+    { "method": "GET", "path": "/robots.txt" },
+    { "method": "POST", "path": "/api/heartbeat" },
+    { "path": "/health*" },
+    { "path": "*.css" }
+]
+```
+
+* `method` is matched case-insensitively. Omit it (or use `"*"`) to match any method.
+* `path` is case-sensitive and supports `*` as a wildcard for any run of characters, including `/`.
+* A malformed or missing rules file is a startup error rather than a warning — silently dropping
+  rules would leave you thinking they were in effect.
+
+**Ignoring only suppresses recording.** The response is produced exactly as it would be otherwise,
+including any user-defined template registered for that route. So you can keep a custom `GET /`
+response while keeping `GET /` out of the cache.
+
 If you don't want to use docker, a static binary is available for linux_amd64. Other platforms should work fine, so far I've tested armv7. 
 
 ## User-defined templates
@@ -58,24 +110,46 @@ reqsink --user-templates-dir examples --extra-routes ./examples/example-routes.j
 
 ```
 OPTIONS:
-    -e, --extra-routes <extra-routes>
+    -e, --extra-routes <EXTRA_ROUTES>
             A JSON file mapping the desired route -> template
 
-    -i, --ip-address <ip-address>                    IP-address to bind to [default: 0.0.0.0]
-    -p, --port <port>                                Port to bind to [default: 8000]
-    -r, --req-limit <req-limit>
+    -h, --help
+            Print help information
+
+    -i, --ip-address <IP_ADDRESS>
+            IP-address to bind to [default: 0.0.0.0]
+
+        --ignore-rules <IGNORE_RULES>
+            A JSON file with extra rules describing requests that should not be recorded. Rules are
+            appended to the built-in defaults unless --no-default-ignore is given
+
+        --no-default-ignore
+            Do not apply the built-in ignore rules (GET /favicon.ico, GET /)
+
+    -p, --port <PORT>
+            Port to bind to [default: 8000]
+
+    -r, --req-limit <REQ_LIMIT>
             Maximum number of requests to keep in memory [default: 1000]
-    -s, --sqlite <sqlite>
+
+    -s, --sqlite <SQLITE>
             Filename of sqlite database to use for persistence (EXPERIMENTAL)
-    -u, --user-templates-dir <user-templates-dir>
+
+    -u, --user-templates-dir <USER_TEMPLATES_DIR>
             User-defined templates directory. If you want to provide a custom response to a
             particular endpoint, you will need to also provide a JSON file mapping the template to
             the route
 
+    -V, --version
+            Print version information
 ```
 
 ## Limitations / TODO items
 
 * Make request store accessible from admin UI
 * Ability to export requests   
+* The `--sqlite` archive is experimental and its on-disk format is **not** stable across versions:
+  rows are bincode-serialized `StoredRequest`s, so adding a field invalidates previously written
+  archives. There is currently no read path, so in practice this only matters if you decode the
+  BLOBs yourself.
 * User-defined templates cannot be used with the same route for more than one method (eg. `/robots.txt` can't have a different `GET` and `POST` response)

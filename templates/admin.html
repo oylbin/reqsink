@@ -24,12 +24,36 @@
     <div class="jumbotron jumbotron-fluid p-3">
         <div class="container">
             <h3 class="display-4"> Welcome to reqsink </h3>
-            <p class="lead">There are currently {{ req_count }} requests in memory cache.</p>
+            <p class="lead">
+                {% if q %}
+                Showing {{ range_from }}-{{ range_to }} of {{ total_matched }} request(s) matching
+                &quot;{{ q }}&quot; ({{ req_count }} in memory cache).
+                {% else %}
+                There are currently {{ req_count }} requests in memory cache.
+                {% endif %}
+            </p>
+
+            <div class="d-flex flex-wrap align-items-start">
+                <form method="GET" action="/admin" class="form-inline mr-3 mb-2">
+                    <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm mr-2"
+                        size="32" placeholder="Filter by path, e.g. /api/widgets"
+                        aria-label="Filter requests by path">
+                    <button type="submit" class="btn btn-primary btn-sm mr-2">Search</button>
+                    {% if q %}
+                    <a href="/admin" class="btn btn-secondary btn-sm">Clear filter</a>
+                    {% endif %}
+                </form>
+
+                <form method="POST" action="/admin/clear" class="form-inline mb-2"
+                    onsubmit="return confirm('Clear all {{ req_count }} cached request(s)? This cannot be undone.');">
+                    <button type="submit" class="btn btn-danger btn-sm">Clear all requests</button>
+                </form>
+            </div>
         </div>
     </div>
 
     <div class="container-fluid">
-        {% for r in reqs | reverse %}
+        {% for r in reqs %}
 
         <div class="row p-2">
 
@@ -56,15 +80,28 @@
                     <pre><code id="code-{{ loop.index }}">{{ r.body }}</code></pre>
                 </div>
             </div>
-            <div class="col-12 b-2 p-2 bd-highlight"> From {{ r.ip_addr }} at {{ r.time }} </div>
+            <div class="col-12 b-2 p-2 bd-highlight">
+                From {{ r.ip_addr }} at
+                <time class="req-time" data-ts="{{ r.time_epoch_ms }}" title="{{ r.time }}">{{ r.time }}</time>
+            </div>
         </div>
 
+    {% else %}
+        <p class="p-2 text-muted">
+            {% if q %}No requests match &quot;{{ q }}&quot;.{% else %}No requests recorded yet.{% endif %}
+        </p>
     {% endfor %}
     </div>
 
-    <a href="/admin?start={{ next_page }}" class="btn btn-primary">Next 10</a>
-
+    <div class="container-fluid p-2">
+        {% if has_prev %}
+        <a href="/admin?start={{ prev_page }}&amp;q={{ q_encoded }}" class="btn btn-primary">Prev 10</a>
+        {% endif %}
+        {% if has_next %}
+        <a href="/admin?start={{ next_page }}&amp;q={{ q_encoded }}" class="btn btn-primary">Next 10</a>
+        {% endif %}
     </div>
+
 </body>
 <script>
     function prettyPrint(codeBlock) {
@@ -75,5 +112,27 @@
         
         hljs.highlightElement(ele);
     }
+
+    /* Timestamps are rendered server-side as UTC and re-written here into the
+       viewer's own timezone. If this fails or JS is off, the UTC string stays. */
+    (function renderLocalTimes() {
+        var tz = "";
+        try {
+            tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+        } catch (e) { /* Intl unavailable; fall through and just show local time */ }
+
+        var els = document.querySelectorAll("time.req-time");
+        for (var i = 0; i < els.length; i++) {
+            var ts = Number(els[i].getAttribute("data-ts"));
+            if (!isFinite(ts) || ts <= 0) { continue; }
+            var d = new Date(ts);
+            var text = d.toLocaleString(undefined, {
+                year: "numeric", month: "2-digit", day: "2-digit",
+                hour: "2-digit", minute: "2-digit", second: "2-digit",
+                hour12: false
+            });
+            els[i].textContent = tz ? text + " (" + tz + ")" : text;
+        }
+    })();
 
 </script>
